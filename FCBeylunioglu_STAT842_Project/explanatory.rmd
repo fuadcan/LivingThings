@@ -305,6 +305,7 @@ tbls <- tbls[order(tbls[,1],decreasing = T),]
 tbls <- tbls[order(tbls[,2],decreasing = T),]
 tbls <- data.frame("Subgenre" = rownames(tbls), tbls)
 ```
+
 ```{r}
 cnames <- colnames(tbls)
 cnames <- c("Sugbenre #", cnames[c(2,3,2,3)])
@@ -556,9 +557,9 @@ for(f in colnames(df.feat)[c(-1,-9)]){
 par(savepar)
 ```
 
-After filtering out non-intersecting songs we can compare distributions of features based on their genres. Above quantile plots show how different the features distribute. The most salient difference is seen in speechiness that yields very intuitive results, accordingly rock songs tend to have less speechiness score than hip-hop. Other major differences are seen for instrumentalness, danceability and valence where rock songs are more instrumental, less danceable and darker (having negative valences) compared to hip-hop. 
+After filtering out non-intersecting songs we can compare distributions of features based on their genres. Above quantile plots show how different the genres distribute with respect to different features. The most salient differences are seen in speechiness, danceability and instrumentalness. According to quantile plots, rock's danceability and speechiness measures are right-skewed and instrumentalness is left-skewed whereas we roughly see the inverse for hip-hop. These observations are very intuitive regarding characteristics of these genres, accordingly rock songs tend to have less speechiness score, be more instrumental, darker (having negative valences) and less danceable. Distributions of liveness scores exhibits non-standard characteristics, and interestingly this both genres almost overlap. This may be due to algorithm design that is used for extracting these features from songs themselves. Moreover distribution of tempo differs substantially, it is bimodular for hip-hop and closer to normal for rock, however one should apply comparison tests to confirm the strength of this difference.
 
-To see if these features have enough correlation with genres we present the below eikosograms. For below displays we clustered each estimation of features into four categories falling in between 5 equidistant benchmarks (e.g. if the range is [0,1], the benchmarks are 0,.25,.50,.75,1). As displays show, the strongest relations are between danceability, speechiness, instrumentalness and valence. On the other hand liveness and tempo levels are almost independent from genre classes whereas the remaining two features do not have strong enough correlations compared to others mentioned.
+The differences between speechiness, danceability and instrumentalness are very strong, therefore we are not going to test the differences visually. To see if these features cause enough variability among genres, however, we present the below eikosograms. For below displays we clustered each estimation of features into four categories falling in between 5 equidistant benchmarks (e.g. if the range is [0,1], the benchmarks are 0,.25,.50,.75,1). As displays show, the strongest relations are between danceability, speechiness, instrumentalness and valence. On the other hand liveness and tempo levels are almost independent from genre classes whereas the remaining two features do not have strong enough correlations compared to others mentioned.
 
 ```{r}
 library('eikosograms')
@@ -827,6 +828,7 @@ bit.tbl[bit.tbl == -Inf] <- 0
 bit.tbl <- bit.tbl/max(bit.tbl)
 corrplot(t(bit.tbl), 'color',title = 'Bitrate vs. Time',  cl.pos = "n")
 ```
+
 ```{r message=F, warning=F, echo=F}
 library('corrplot')
 
@@ -837,6 +839,9 @@ bit.tbl <- log(bit.tbl)
 bit.tbl[bit.tbl == -Inf] <- 0
 bit.tbl <- bit.tbl/max(bit.tbl)
 corrplot(t(bit.tbl), 'color',title = 'Bitrate vs. Time (Rock)',  cl.pos = "n")
+```
+
+```{r message=F, warning=F, echo=F}
 
 bit.tbl <- with(subset(mdat, genre_top == 'Hip-Hop'),
                 t(table(substr(as.Date(date_created),1,4),round(bit_rate,-4))))
