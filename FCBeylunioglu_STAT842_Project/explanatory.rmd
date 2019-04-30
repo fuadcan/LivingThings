@@ -1,0 +1,1296 @@
+---
+title: "Songs, Genres and Living Things: An analysis of Spotify data enlarged with computer calculated features"
+output: pdf_document
+author: | 
+  | Fuat Can Beylunioğlu
+  | University of Waterloo
+geometry: margin=.75in
+graphics: yes
+---
+
+```{r setup, eval=T, echo=F}
+knitr::opts_chunk$set(echo = TRUE)
+setwd('~/Documents/musicdata/')
+mdat <- read.csv('datasets/fma-rock-vs-hiphop.csv')
+features <- data.frame(read.csv('datasets/echonest-metrics.csv'))
+features <- features[order(features$track_id),]
+mdat     <- mdat[order(mdat$track_id),]
+
+library('knitr')
+library('kableExtra')
+library('pander')
+
+attach(mdat)
+
+```
+
+# Introduction
+For a European walking on the streets of Waterloo it may be shocking to overhear music playing in pubs around, accompanied with a growing fear in the heart, "is rock really dead this time?" Unfortunately a negative answer to this question doesn't ease the fear but spread another one, "what is rock anyway", for characterstics are changing and branching out rapidly. We are not in times when jazz players improvize to fill in remaining 5 minutes in 45s, nor is there a progressive rock band recording a concept album about our daily anxieties and sell 24 million copies. Rather, with today's technology a 15 year old teenager from California can record a couple of 3.5 minute songs with her elder brother and earn enourmous fame while many don't get recognition at all. 
+
+This phenomenon is challenging distributors, or today, online streaming platforms such as YouTube and Spotify. As song characteristics are varying and there are too many genres to distinguish, developing recommendation systems to attract customers is getting harder. There is not a genre that is decided by authorities but there are genres that are identified everyday by audience as they share and discuss their ideas, feelings, representations over social platforms. Instead of hiring a team to decide, companies are interested in extracting features of songs to distinguish one from another.
+
+This study aims to answer above mentioned questions as the author of this project is of the ones that are shocked with differences in musical tastes and he cannot even identify a rock song anymore. The analysis is performed over songs in two genres (Rock and Hip Hop), which are listed between `r substr(min(levels(date_created)),1,10)` and `r substr(max(levels(date_created)),1,10)` on a popular online audio streaming platform, Spotify; and their features, which are provided by [Echonest](http://the.echonest.com/) that is recently acquired by Spotify. There are `r nrow(mdat)` metadata consists of each song's genre, subgenres, number of times favourited, commented etc.; and features data containing measures such as acousticness, dancebility, instrumentalness. 
+
+The dataset is shared as a part of online project that aims to develop a classifier to accurately cluster songs based on computer generated features. Note that the set is far from being perfect. Metadata is sparse and features are not available for all songs. In particular there are `r nrow(mdat)` metadata and `r nrow(features)` features but only 4802 of them match. Still this subset is good enough since the proportion of songs fall under mentioned genres in intersecting data matches the proportion in metadata, i.e. 80\% Rock and 20\% Hip-Hop songs.
+
+In this study we will be mainly interested in above questions that can be formulated as follows:
+
+1. RQ1: Is Hip-Hop's popularity increasing by time compared to Rock's?
+2. RQ2: Are the two genres distinguishable using computer generated features of each song?
+
+The author hypotesize that there should be a certain combination of features that distinguishes genres as they are substantially different; rock is an instrument generated music whereas hip-hop contains more digital touches and relies on lyrics as opposed to melodies. For subgenres, however, finding a heuristic will be harder for two reasons. First the subgenres overlap not because they indicate a certain conceptual difference, but because a temporary agreement over social platforms decides how these songs should be called, for example, e.g. indie-rock or dark-progressive. Billie Eilish, a 15 year old teenager from California recording her songs with her elder brother, stated in an interview that even she doesn't know what her genre is. Similar to progressive rock that is not specific enough to specify Pink Floyd, indie-rock is not a subgenre distinguishing a band from another anymore; there are deeper branches in indie and progressive rock. Second, the data doesn't provide enough information to specify subgenres perfectly, but gives some hints written as tags that can be used to figure out what the song's genre is. For these reasons it is challenging to separate datapoints into subgenres analytically based on their features.
+
+Author's second hypothesis is that the popularity of Hip-Hop is increasing by time. At first look we can see the ratio is 80\% vs 20\% in favour of rock but people's interest may still be more for Hip-Hop than for Rock. Our study answers this question based on the data at hand. This is, however, our limitation as we may be exposed to dataset bias since we don't know whether or not data is adjusted to have this ratio. But in either case relative increase in Hip-Hop's popularity will be regarded as an evidence supporting the hypothesis.
+
+
+# Data Description
+As described in introduction two datasets (metadata and features) are overlapping to some degree. As shown in the below diagram only 4802 datapoints have both meta-information and feature estimates whereas non-overlapping data is much more than this number. To answer the questions related with RQ1 we will use meta-data only and disregard the fact that some do not match with second dataset. To answer RQ2, however, our analysis will continue with intersecting datapoints.
+
+```{r}
+library('VennDiagram')
+grid.newpage()
+draw.pairwise.venn(nrow(mdat), nrow(features), length(intersect(track_id,features$track_id)), 
+                   category = c("Metadata", "Features"), lty = rep("blank", 
+    2), fill = c("firebrick", "steelblue"), cat.pos = c(0, 
+    0), cat.dist = rep(0.025, 2))
+```
+
+## Metadata 
+The first dataset contains `r nrow(mdat)` rows having meta-information of each song and `r ncol(mdat)` columns corresponding to the following features:
+
+1. track_id: [Integer] Unique id that links two datasets (meta-data and features)
+2. bit_rate: [Integer] Number of bits processed per second. It can be interpreted as quality of the song streamed by Spotify users
+3. comments: [String] number of comments written by users for each song
+4. composer: [String] Name of the song's composer
+5. date_created: [Date] Upload date of the song to the platform
+6. date_recorded: [Date] Record date of the song
+7. duration: [Integer] Duration of the song in seconds
+8. favorites: [Integer] Number of users added the song to favourated list
+9. genre_top: [String] Genre of the song, either Rock or Hip Hop
+10. genres: [List] A list of category number(s) corresponding song's genre
+11. genres_all: [List] An exhaustive list of category numbers for song's genre. It extends `genres`.
+12. information: [String] Short information about song, e.g. "Recorded live at WSMU in 1999, University of Dartmouth Radio"
+13. interest: [Integer] Number of clicks to song's page
+14. language_code: [String] Two letter code for language that the song (lyrics) is written. For instrumental songs it is "".
+15. license: [String] License describing the rights of use, share etc. (Similar to software license, e.g. Apache license 2.0, MIT)
+16. listens: [Integer] Count of times the song is listened
+17. lyricist: [String] Name of the song (lyrics) writer
+18. number: [Integer] An unexplained feature
+19. publisher: Name of the publisher
+20. tag: [List] A list of tags containing giving information about song's sub-genre, origin, whether it is live performance etc.
+21. title: Name of the song
+
+To have a better sight about the dataset we present the first 3 lines of metadata as below:
+```{r}
+pander(head(mdat,3), split.table = 80, style = 'rmarkdown')
+```
+
+### Missing Data Points
+As mentioned earlier sparseness of our data, for some variables (i.e. `r names(which( apply(sapply(mdat, function(series) series=="" | series=="[]"), 2,sum) != 0))`) limits our analysis. To be able to understand whether there is a pattern in the sparseness we calculate number of missing data and construct glyphs using Keim recursive rectangles:
+
+```{r}
+isempty        <- sapply(mdat, function(series) series=="" | series=="[]")
+isempty.counts <- apply(isempty,2,sum)
+isempty.percs  <- apply(isempty,2, function(ser) round(mean(ser),2))
+# t(cbind(isempty.counts, isempty.percs) )
+```
+
+
+```{r, warning=F, message=F}
+library('glyphs')
+months.created   <- months(as.Date(date_created))
+years.created    <- as.numeric(substr(date_created,1,4))
+missing.features <- names(which(isempty.counts != 0))
+# 
+missings <- aggregate(isempty[,"composer"] ~ months.created + years.created, FUN = sum)
+missings <- cbind(missings,
+                  sapply(missing.features, function(cname) 
+                    aggregate(isempty[,cname] ~ months.created + years.created, FUN = sum)[,3]))
+
+missings <- missings[,-3]
+
+doit <- function (glyphs, main ="", labels = NULL, labelCol = "grey30"){
+  x <- getGridXY(length(glyphs))
+  plot_glyphs(x, glyphs = glyphs, axes = FALSE, xlab = "", ylab = "",
+              glyphWidth = 0.8, glyphHeight = 0.6,main = main, cex.main = 0.8)
+if (!is.null(labels)) text(x, labels = labels, col = labelCol)
+}
+```
+
+```{r}
+cols <- colorspace::diverge_hcl(21)
+missings_Keim <- make_glyphs(as.list(data.frame(missings[,-(1:2)]))[c(1,6,7,8)],glyph_type = "rectangle",
+                              width  = c(12,1),
+                              height = c(10,1),
+                              origin = "mean", col=cols)
+doit(missings_Keim,labels=missing.features[c(1,6,7,8)], "Missing Data")
+
+missings_Keim <- make_glyphs(as.list(data.frame(missings[,-(1:2)]))[-c(1,6,7,8)],glyph_type = "rectangle",
+                              width  = c(12,1),
+                              height = c(10,1),
+                              origin = "mean", col=cols)
+doit(missings_Keim,labels=missing.features[-c(1,6,7,8)], "Missing Data")
+
+```
+
+Even though the data is provided by Spotify, it's main source is, probably, not purely the platform itself; it is either enlarged for research purposes or the company outsources some information from other suppliers. For some seemingly unrelated variables missing data-points are almost perfectly overlap i.e. _among composer, lyricist, publisher and tags; and among date_recorded, language code and information_. The glyphs are arranged to have months in columns, years (2008 - 2017) in rows and the colours are dark blue for mininum and dark red for maximum. For the first group (composer, lyrics etc.) number of missings are very high at the beginning of 2008 and in 2011. Similarly for the second group (date_recorded etc.) dark red is seen on March 2009, March 2011 and July 2011. One can expect missing information of lyricists and composers to overlap but it is very unlikely to have tags and composer or date_recorded and language_code overlapping. The reason might also be that some songs are uploaded by the composers themselves, not a well established distributor however non-missing publishers in the dataset are not supporting this explanation as most of them are not well-known. Yet there is a possibility that below publishers are marginal ones:
+
+```{r}
+unique(publisher)
+```
+
+In the rest of the study we will exclude language code, lyricist, number, information, title and license from our analysis due to their sparseness and quality. 
+
+### The Characteristics of Data
+
+```{r, echo=F}
+plot.quantile <- function(data, showHist = F, showOgive=F, showDensity=F, ...){
+    qvals <- sort(data)
+    pvals <- ppoints(length(qvals))
+
+    dat  <- data.frame(qvals,pvals)
+    vals <- seq(min(qvals),max(qvals),,10)
+    vals <- cbind(vals, sapply(vals, function(v) head(dat[dat[,1]>=v,2],1)))
+    locs <- cbind(1:(nrow(vals)-1), 2:nrow(vals))
+
+drawbox <- function(x,y) {
+xvals <- c(x,rev(x),x[1])
+yvals <- c(rep(y, each=2),y[1])
+rect(min(xvals),min(yvals),max(xvals),max(yvals),col = adjustcolor("gray",.3))
+lines(xvals, yvals)
+}
+
+plot(pvals,qvals, cex=1.5,
+    xlab = "cumulative proportion",
+    col=adjustcolor('firebrick',.3), pch=16, type='o',...)
+
+if (showOgive){
+    lines(x= c(0.02, 0.09, 0.25, 0.50, 0.75, 0.91, 0.98),
+          y= quantile(data, probs = c(0.02, 0.09, 0.25, 0.50, 0.75, 0.91, 0.98)),
+          type= 'o', col='steelblue', pch=19)
+}
+     
+if(showHist){
+    noshow <- apply(locs, 1, function(r) drawbox(c(0,vals[r[2],2]-vals[r[1],2]),
+                                                 c(vals[r[1],1],vals[r[2],1])))}
+
+if(showDensity){
+    dens  <- density(data)
+    dens  <- data.frame(y=dens$y, x=dens$x)
+    dens$y <- dens$y*max(diff(vals)[,2])/max(dens$y)
+    lines(dens$y,dens$x)
+    polygon(dens$y,dens$x, col=adjustcolor("grey",0.5))
+}
+
+}
+
+tform <- function(data, alpha){if(alpha==0){log(data)} else {(data^alpha-1)/alpha}}
+
+
+# library("qqtest")
+# 
+# savePar <- par(mfrow = c(1,2))
+
+plot.hist <- function(dat, showDensity=F,...){
+  if(showDensity){dens <- density(dat)
+  yrange <- range(dens$y)
+  hist(dat, probability = T,ylim = yrange,...)
+  lines(dens)
+  polygon(dens, col = adjustcolor("grey",.6))
+  } else {
+    hist(dat, probability = F,...)
+  }
+}
+
+# qqtest(dat)
+# par(savePar)
+```
+
+In this subsection we will visualize some variables that we will use the rest of this study. These non-missing numeric variables are examined below, except `number` which is excluded since there is no information about this variable. We start by plotting quantiles and histograms as below:
+
+```{r}
+numeric_columns <- which(sapply(1:ncol(mdat), function(i) is.numeric(mdat[,i])))
+datnames <- colnames(mdat)[numeric_columns]
+
+savepar <- par(mfrow=c(2,2))
+nores <- lapply(datnames[2:7], function(datname)
+  plot.quantile(get(datname),main=paste0('Quantile Plot of ',datname),
+              ylab=datname)
+  )
+
+par(savepar)
+
+```
+
+The dataset is highly right-skewed for many columns such as favourites and duration.  We transformed the variables to have them distributed closer to _normal_. Below histograms show distributions after adjustment with their $\alpha$ values:
+
+```{r}
+savepar <- par(mfrow=c(1,2))
+plot.hist(tform(duration, .13), col=adjustcolor('grey60',.6),
+          showDensity = T, main='Duration (alpha = 0.13)')
+plot.hist(tform(interest,-.13), col=adjustcolor('grey60',.6),
+          showDensity = T, main='Interest (alpha = -0.13)')
+plot.hist(subset(tform(favorites,0),favorites!=0),
+          col=adjustcolor('grey60',.6),showDensity = F, main='Favourites (alpha=0)')
+plot.hist(subset(tform(comments,0),comments!=0 ),
+          col=adjustcolor('grey60',.6),showDensity = F, main='Comments (alpha=0)')
+plot.hist(tform(listens,-.06), col=adjustcolor('grey60',.6),
+          showDensity = F, main='Listens (alpha=-0.06)')
+
+plot.hist(bit_rate, col=adjustcolor('grey60',.6),
+          breaks=seq(min(bit_rate),max(bit_rate),,12),
+          main='Bit Rate')
+plot.hist(subset(bit_rate,genre_top=='Rock'), col=adjustcolor('grey60',.6),
+          breaks=seq(min(bit_rate),max(bit_rate),,12),
+          main='Bit Rate (Rock)')
+
+plot.hist(subset(bit_rate,genre_top=='Hip-Hop'), col=adjustcolor('grey60',.6),
+          breaks=seq(min(bit_rate),max(bit_rate),,12),
+          main='Bit Rate (Hip-Hop)')
+par(savepar)
+```
+
+The histograms give us meaningful distributions with regards to underlying data. Our best adjustments to __favourite__ and __comments__ were to take logs and we had to filter cases favourited (or commented) 0 times for presentation purposes since they cause bimodality and dominate the distribution. After the adjustment we obtained poison-like distribution for favourites but an irregular one having little bumps for comments implying that people often don't write comments to songs, rather favourate them; but we are not strict in this conclusion as this behaviour may not be true for all genres. Bit rate, however, distributes bimodular and this doesn't depend on whether it is a rock or hip-hop song. At the first glance we can say that there are two piles of bit-rates probably because of costs of recording a song.
+
+One would expect the __number of clicks to song page (interest)__, __listens__ and __duration of songs__ to have distributions from _normal family_ and we could obtain such distributions with $\alpha=-0.13, -0.06$ and $0.13$ respectively. For duration, however, tails of the distribution were thinner than z-distribution, quite much like t-distribution with $df=6$. We present qqplots with envelops as below.
+
+```{r}
+library('qqtest')
+duration.t    <- tform(duration,.13)
+interest.t    <- tform(interest,-.13)
+listens.t     <- tform(listens,-.06)
+favourites.tf <- tform(subset(favorites,favorites!=0),0)
+comments.tf   <- tform(subset(comments,comments!=0),0)
+
+
+savepar <- par(mfrow=c(1,2))
+qqtest(duration.t,"student",df = 6, main='duration (alpha=0.13)')
+qqtest(interest.t, main= 'interest (alpha=-0.13)')
+qqtest(favourites.tf,"half-normal", main= 'favourites (alpha=0)')
+qqtest(listens.t, main='listens (alpha=-0.06)')
+par(savepar)
+```
+### Genres
+Dataset has three columns for `genre_top`, `genres` and `genres_all` that give detail about songs' styles. For example a song having "rock" genre can further have "psychodelic rock" (e.g. Pink Floyd - On the run) or "progressive rock" (e.g. Pink Floyd - Shine on You Crazy Diamond) or both (e.g. Pink Floyd - Echoes). However the difference between `genres` and `genres_all` is not specified. In this subsection we will present the differences (if any) and show genres that each sub-genre belongs to.
+
+We start by mining `genres` and `genres_all`:
+```{r}
+genres.lst <- lapply(strsplit(gsub("\\[|\\]","",genres),", "), as.numeric)
+genres.set <- unique(unlist(genres.lst))
+genres.mat <- t(sapply(genres.lst, function(lst) {temp <- rep(0,max(genres.set)); temp[lst] <- 1; temp}))
+colnames(genres.mat) <- 1:max(genres.set)
+genres.mat <- genres.mat[,apply(genres.mat,2,sum)!=0]
+
+genres_all.lst <- lapply(strsplit(gsub("\\[|\\]","",genres_all),", "), as.numeric)
+genres_all.set <- unique(unlist(genres_all.lst))
+genres_all.mat <- t(sapply(genres_all.lst, function(lst) {temp <- rep(0,max(genres_all.set)); temp[lst] <- 1; temp}))
+colnames(genres_all.mat) <- 1:max(genres_all.set)
+genres_all.mat <- genres_all.mat[,apply(genres_all.mat,2,sum)!=0]
+
+```
+
+```{r}
+
+genres.tbl     <- table(reshape2::melt(data.frame(genres.mat,genre_top), id='genre_top'))
+genres_all.tbl <- table(reshape2::melt(data.frame(genres_all.mat,genre_top), id='genre_top'))
+```
+
+```{r warning=F, message=F}
+library("dplyr")
+genres_all.tbl <- genres_all.tbl[,colnames(genres_all.tbl) %in% colnames(genres.tbl),]
+tbls <- cbind(t(genres.tbl[,,2]),t(genres_all.tbl[,,2]))
+rownames(tbls) <- gsub("X","",rownames(tbls))
+
+tbls <- tbls[order(tbls[,1],decreasing = T),]
+tbls <- tbls[order(tbls[,2],decreasing = T),]
+tbls <- data.frame("Subgenre" = rownames(tbls), tbls)
+```
+```{r}
+cnames <- colnames(tbls)
+cnames <- c("Sugbenre #", cnames[c(2,3,2,3)])
+
+kbl <- kable_styling(kable(tbls,row.names = F,col.names = cnames),
+                     bootstrap_options = "striped", full_width = F)
+add_header_above(kbl,c("", "genres" = 2, "genres_all" = 2))
+```
+
+The table presents counts of songs that are featuring given subgenre (shown with numeric placeholders in the first column). As we can see subgenres numbered with 21, 539, 100, 811, 542, 83 and 580 belong only to Hip-Hop whereas others belong only to rock and the sets are distinct. Besides both `genres` and `genres_all` have equal number of classes (`r sum(tbls[,2]!=0)` hip hop and `r sum(tbls[,2]==0)` rock) wheras numbers for `genres_all` is greater than or equal to the ones for `genres` indicating some subgenres are associated to songs as to give more detail about how it sounds. 
+
+Even though more information can help us to better distinguish observations, for simplicity, we will continue using `genres` instad of `genres_all` since they both are consituted by same number of classes. Therefore we define below table to support further analysis.
+
+```{r}
+genreChart  <- data.frame(
+  subgenre=rownames(tbls), genre = c(rep('Rock',sum(tbls[,2]==0)),rep('Hip-Hop',sum(tbls[,2]!=0))))
+head(genreChart,3)
+```
+
+### Preferences and Coverage per Subgenre
+In this part we will present favourate, listen, comment, interest counts per genre and their coverage on the platform using treemaps. Note that following displays don't sum up to dataset size but exceed it. More clearly since subgenres may overlap on some songs we duplicated these entries, so that the regions don't have one to one relation with songs but with subgenres.
+
+```{r}
+library('treemap')
+savepar <- par(mfrow=c(1,2))
+n.songs <- tbls[,1:3]
+n.songs <- data.frame(n.songs, genreChart[match(n.songs$Subgenre,genreChart[,1]),2])
+n.songs$n <- n.songs$Rock + n.songs$Hip.Hop
+colnames(n.songs)[4] <- "Genre"
+n.songs <- n.songs[,c("n","Genre","Subgenre")]
+# Custom labels:
+treemap(n.songs, index=c("Genre","Subgenre"), title='Number of Songs per Genre',
+        vSize="n", type="index",
+        
+        fontsize.labels=c(15,12),
+        fontcolor.labels=c("white","orange"), 
+        fontface.labels=c(2,1),               
+        bg.labels=c("transparent"),           
+        align.labels=list(
+          c("center", "center"), 
+          c("right", "bottom")
+        ),                                   
+        overlap.labels=0.5,                  
+        inflate.labels=F
+)
+
+avg.interest <- sort(apply(genres.mat, 2, function(c) sum(c*interest)/sum(c)),decreasing = T)
+avg.interest <- data.frame(avg.interest, genreChart[match(names(avg.interest),genreChart[,1]),2])
+avg.interest$Subgenre <- rownames(avg.interest)
+colnames(avg.interest) <- c('Avg. Interest','Genre','Subgenre')
+
+# Custom labels:
+treemap(avg.interest, index=c("Genre","Subgenre"),
+        vSize="Avg. Interest", type="index",
+        
+        fontsize.labels=c(15,12), 
+        fontcolor.labels=c("white","orange"),    
+        fontface.labels=c(2,1),                  
+        bg.labels=c("transparent"),              
+        align.labels=list(
+          c("center", "center"), 
+          c("right", "bottom")
+        ),                                   
+        overlap.labels=0.5,                      
+        inflate.labels=F,                        
+)
+
+par(savepar)
+```
+
+
+```{r}
+avg.favourites <- sort(apply(genres.mat, 2, function(c) sum(c*favorites)/sum(c)),decreasing = T)
+avg.favourites <- data.frame(avg.favourites, genreChart[match(names(avg.favourites),genreChart[,1]),2])
+avg.favourites$Subgenre <- rownames(avg.favourites)
+colnames(avg.favourites) <- c('Avg. Favourites','Genre','Subgenre')
+
+# Custom labels:
+treemap(avg.favourites, index=c("Genre","Subgenre"),
+        vSize="Avg. Favourites", type="index",
+        
+        fontsize.labels=c(15,12),                
+        fontcolor.labels=c("white","orange"),    
+        fontface.labels=c(2,1),                  
+        bg.labels=c("transparent"),              
+        align.labels=list(
+          c("center", "center"), 
+          c("right", "bottom")
+        ),                                   
+        overlap.labels=0.5,                      
+        inflate.labels=F,                        
+        
+)
+```
+
+```{r}
+avg.listens <- sort(apply(genres.mat, 2, function(c) sum(c*listens)/sum(c)),decreasing = T)
+avg.listens <- data.frame(avg.listens, genreChart[match(names(avg.listens),genreChart[,1]),2])
+avg.listens$Subgenre <- rownames(avg.listens)
+colnames(avg.listens) <- c('Avg. listens','Genre','Subgenre')
+
+# Custom labels:
+treemap(avg.listens, index=c("Genre","Subgenre"),
+        vSize="Avg. listens", type="index",
+        
+        fontsize.labels=c(15,12),              
+        fontcolor.labels=c("white","orange"),  
+        fontface.labels=c(2,1),                
+        bg.labels=c("transparent"),              
+        align.labels=list(
+          c("center", "center"), 
+          c("right", "bottom")
+        ),                                   
+        overlap.labels=0.5,                      
+        inflate.labels=F
+        
+)
+```
+
+```{r}
+
+avg.duration <- sort(apply(genres.mat, 2, function(c) sum(c*duration)/sum(c)),decreasing = T)
+avg.duration <- data.frame(avg.duration, genreChart[match(names(avg.duration),genreChart[,1]),2])
+avg.duration$Subgenre <- rownames(avg.duration)
+colnames(avg.duration) <- c('Avg. duration','Genre','Subgenre')
+
+# Custom labels:
+treemap(avg.duration, index=c("Genre","Subgenre"),
+        vSize="Avg. duration", type="index",
+        
+        fontsize.labels=c(15,12),               
+        fontcolor.labels=c("white","orange"),   
+        fontface.labels=c(2,1),                 
+        bg.labels=c("transparent"),             
+        align.labels=list(
+          c("center", "center"), 
+          c("right", "bottom")
+        ),                                   
+        overlap.labels=0.5,                   
+        inflate.labels=F
+        
+)
+```
+
+Albeit some variations, treemaps resemble one another. The averages seem to be consistent with some ratio (although this ratio doesn't necessarily be equal to 80\% / 20\%) with exceptions for number and duration of songs. The regions are larger for same subgenres in treemaps of listens and interests and similar to favourites to some degree which is intuitive as listeners are more likely to favourate and listen to the songs whose page they have visited. 
+
+Another characterstics that is highlighted by treemaps is the dissimilarity between duration and other displays. For example longest rock songs are classified as 113, 36 and 58 but people bearly listen to these songs. However this phenomenon cannot be due to duration but to these specific subgenres (e.g. black metal songs are usually longer than others but people rarely listen this genre). The relation between duration of songs and listen counts, according to below eikosogram (where classes from 1 to 4 are calculated using Tukey's five numbers), seems to be almost independent regardless of its genre. On the other hand there is a higher proportion of popular hip-hop songs than rock according to the same display indicating that there are more hit songs in this genre.
+
+One salient difference is coverage of subgenres, the region of hip-hop is smaller than rock's but this is a misleading observation since number of subgenres belong to hip-hop is already less than to rock, and numbers are duplicated for overlapping subgenres. Yet it reminds an important aspect of the data, the platform is already biased towards rock and it might effect the ratios. 
+
+ 
+```{r}
+library('eikosograms')
+
+bm.l <- fivenum(listens.t)
+bm.d <- fivenum(duration.t)
+bm.d[1] <- min(duration.t)
+bm.d[5] <- max(duration.t)
+listens.class  <- c('1','2','3','4')[apply(sapply(fivenum(listens.t), 
+                                                  function(bm) listens.t >= bm),1,sum)]
+duration.class <- c('1','2','3','4')[apply(sapply(bm.d,
+                                                  function(bm) duration.t >= bm),1,sum)]
+
+listens.class  <- apply(sapply(fivenum(listens.t), 
+                               function(bm) listens.t >= bm),1,sum)
+duration.class <- apply(sapply(bm.d, function(bm) duration.t >= bm),1,sum)
+
+eikos(listens~duration+genre, data = data.frame(
+  listens=listens.class,duration=duration.class,genre=genre_top))
+
+```
+
+## Features data
+Second dataset consists of 8 features of some songs in metadata linked with their `track_id`. Each feature is a computer generated estimate ranging in between $[0,1]$. To start investigating the characteristics of the data we plot histograms of each feature as below.
+
+```{r}
+
+savepar <- par(mfrow=c(2,2))
+nores <- lapply(colnames(features)[c(-1,-9)][1:4], function(f){
+  plot.hist(features[,f], main=f, col='grey50')
+})
+nores <- lapply(colnames(features)[c(-1,-9)][5:8], function(f){
+  plot.hist(features[,f], main=f, col='grey50')
+})
+par(savepar)
+```
+Features give some hindsights but before proceeding to a deeper look we prefer to transform the variables first to be able to have better comparisons. Below we show two transformed variables only, since the others are either bimodal or need no adjustments. For these two variables, on the other hand, we couldn't obtain perfect distributions but good enough ones. Therefore before proceeding we cast these adjustments to data and proceed with this version.
+
+```{r}
+
+savepar <- par(mfrow=c(1,2))
+plot.hist(tform(features$speechiness,-.3), main='speechness (alpha=-0.3)', col='grey50')
+plot.hist(tform(features$liveness,-.3), main='liveness (alpha=-0.3)', col='grey50')
+par(savepar)
+features$speechiness <- tform(features$speechiness,-.3)
+features$liveness    <- tform(features$liveness,-.3)
+
+```
+
+We further intersect two datasets (metadata and features) for the rest of the analysis. Here `df.feat` and `df.mdat` are intersecting subsamples of features and metadata based on their `track_id`. We also ensured that `track_id`s have the same order. Further we define genresChart, different from `genreChart`; it doesn't duplicate songs which have more than one subgenre, but leaves the list of subgenres as they are provided in the original data.
+
+```{r}
+
+df.feat <- features[features$track_id %in% 
+                      intersect(features$track_id, mdat$track_id),]
+df.mdat <- mdat[mdat$track_id %in% 
+                  intersect(features$track_id, track_id),]
+df.gdat <- genres.mat[mdat$track_id %in%
+                        intersect(features$track_id, track_id),]
+# cbind(df.feat$track_id, df.mdat$track_id)
+
+genresChart <- data.frame(as.matrix(sort(
+  table(gsub("\\[|\\]","",df.mdat$genres)),decreasing = T)))
+genresChart$subgenre <- rownames(genresChart)
+genresChart$genre <- genreChart$genre[match(
+  sapply(strsplit(rownames(genresChart),','), function(g) g[1]),genreChart$subgenre)]
+genresChart <- genresChart[,-1]
+genresChart$class <- genresChart$subgenre
+genresChart$class[21:nrow(genresChart)] <- 'other'
+genresChart$cols <- rep('grey75',nrow(genresChart))
+genresChart$cols[genresChart$genre=='Rock'][1:18] <- colorspace::heat_hcl(18)
+genresChart$cols[genresChart$genre=='Hip-Hop'][1:2] <- c('steelblue','purple')
+
+```
+
+
+
+```{r}
+savepar <- par(mfrow=c(1,2))
+######## Quantile Plots ########
+
+for(f in colnames(df.feat)[c(-1,-9)]){
+  plot(ppoints(sort(df.feat[,f])),sort(df.feat[,f]), cex=1.5,
+       xlab = "cumulative proportion",
+       col=adjustcolor('grey50',.3), pch=16, type='n')
+  cols <- adjustcolor(c('firebrick','steelblue'),.3)
+  
+  for(g in c('Rock','Hip-Hop')){
+    qvals <- sort(df.feat[df.mdat$genre_top==g,f])
+    pvals <- ppoints(length(qvals))
+    points(pvals,qvals, cex=1.5,
+           xlab = "cumulative proportion",
+           ylab = "prob",
+           col=cols[c('Rock','Hip-Hop')==g], pch=16, type='o')
+  }
+  title(f)
+  cat('\n')
+}
+par(savepar)
+```
+
+After filtering out non-intersecting songs we can compare distributions of features based on their genres. Above quantile plots show how different the features distribute. The most salient difference is seen in speechiness that yields very intuitive results, accordingly rock songs tend to have less speechiness score than hip-hop. Other major differences are seen for instrumentalness, danceability and valence where rock songs are more instrumental, less danceable and darker (having negative valences) compared to hip-hop. 
+
+To see if these features have enough correlation with genres we present the below eikosograms. For below displays we clustered each estimation of features into four categories falling in between 5 equidistant benchmarks (e.g. if the range is [0,1], the benchmarks are 0,.25,.50,.75,1). As displays show, the strongest relations are between danceability, speechiness, instrumentalness and valence. On the other hand liveness and tempo levels are almost independent from genre classes whereas the remaining two features do not have strong enough correlations compared to others mentioned.
+
+```{r}
+library('eikosograms')
+feat.original <- read.csv('datasets/echonest-metrics.csv')
+
+
+df.feat.original <- feat.original[match(df.feat$track_id,feat.original$track_id),]
+acous.class <- c('1','2','3','4')[apply(sapply(
+  c(0,.25,.5,.75), function(bm) df.feat$acousticness >= bm),1,sum)]
+dance.class <- c('1','2','3','4')[apply(sapply(
+  c(0,.25,.5,.75), function(bm) df.feat$danceability >= bm),1,sum)]
+engy.class  <- c('1','2','3','4')[apply(sapply(
+  c(0,.25,.5,.75), function(bm) df.feat$energy >= bm),1,sum)]
+instr.class <- c('1','2','3','4')[apply(sapply(
+  c(0,.25,.5,.75), function(bm) df.feat$instrumentalness >= bm),1,sum)]
+lvns.class  <- c('1','2','3','4')[apply(sapply(
+  seq(min(df.feat$liveness),max(df.feat$liveness),,5)[1:4],
+  function(bm) df.feat$liveness >= bm),1,sum)]
+spch.class  <- c('1','2','3','4')[apply(sapply(
+  seq(min(df.feat$speechiness),max(df.feat$speechiness),,5)[1:4],
+  function(bm) df.feat$speechiness >= bm),1,sum)]
+tempo.class <- c('1','2','3','4')[apply(sapply(seq(min(df.feat$tempo),
+                    max(df.feat$tempo),,5)[1:4], function(bm) df.feat$tempo >= bm),1,sum)]
+valn.class  <- c('1','2','3','4')[apply(sapply(c(0,.25,.5,.75),
+                                               function(bm) df.feat$valence >= bm),1,sum)]
+
+df <- data.frame(acousticness = acous.class,
+                 dancebility = dance.class,
+                 energy = engy.class,
+                 instrumentalness = instr.class,
+                 liveness = lvns.class,
+                 speechiness=spch.class,
+                 tempo=tempo.class,
+                 valence = valn.class,
+                 genre=df.mdat$genre_top)
+
+eikos(genre~acousticness, data = df, main = 'Acousticness')
+eikos(genre~dancebility, data = df, main='Dancebility')
+eikos(genre~energy, data = df, main = 'Energy')
+eikos(genre~instrumentalness, data = df, main = 'Instrumentalness')
+eikos(genre~liveness, data = df, main='Liveness')
+eikos(genre~speechiness, data = df, main= 'Speechiness')
+eikos(genre~tempo, data = df, main = 'Tempo')
+eikos(genre~valence, data = df, main = 'Valence')
+
+```
+
+```{r}
+cols <- rep('firebrick',nrow(df.feat)); cols[df.mdat$genre_top=='Hip-Hop'] <- 'steelblue'
+cols <- adjustcolor(cols,.1)
+panel.hist <- function(x, col=NULL, ...)
+  { # removing boxes around histogram so it fits
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(usr[1:2], 0, 1.5) )
+  h <- hist(x, plot = FALSE)
+  breaks <- h$breaks; nB <- length(breaks)
+  y <- h$counts; y <- y/max(y)
+  rect(breaks[-nB], 0, breaks[-1], y, col="grey90", ...)
+}
+
+pairs(df.feat[,c(-1,-9)], row1attop = FALSE,
+panel = points, diag.panel = panel.hist,
+cex = 1, pch = 1, col=cols,
+cex.labels = 1, font.labels = 2)
+```
+
+We can see the features in action in above pairplots. Danceability can be a useful feature to separate data into more homogenous regions but the most distinguishing feature is clearly speechiness and neither of the rest can get closer to this level of efficiency. Yet as seen in below plots, we cannot either say this feature combined with others can separate data precisely. To this end, in later sections, we will apply some dimension reduction techniques and extract more useful features.
+
+```{r warning=F,message=F}
+library('PairViz')
+library('MASS')
+cols <- rep('firebrick',nrow(df.feat))
+cols[df.mdat$genre_top=='Hip-Hop'] <- 'steelblue'
+savepar <- par(mfrow=c(2,4))
+df.temp <- df.feat[-c(1,9)]
+
+nores  <- lapply(c(1:5,7:8), function(i) {
+  xind <- i
+  yind <- 6
+  x <- df.temp[,xind]
+  y <- df.temp[,yind]
+  xname <- colnames(df.temp)[xind]
+  yname <- colnames(df.temp)[yind]
+# Two dimensional kernel density estimate
+den <- kde2d(x=x, y=y, n=100 )
+zlim <- range(den$z)
+plot(x, y, pch=1,col=cols,
+     main=paste0(xname,' - ',yname), ylab=yname, xlab=xname)
+contour(den$x, den$y, den$z, col="grey10",
+        levels = pretty(zlim, 10), lwd=1, add=TRUE)
+  
+})
+par(savepar)
+
+
+```
+
+### Identifying Subgenres
+`tags` give some information to identify genres, and for some cases it even gives exact information. We will first start by plotting co-occurances of subgenres in `genres` variable and check whether there is a structure that can reduce possibilities. We will then attempt to identify them via overlapping with tags.
+
+```{r message=F, warning=F}
+library('igraph')
+## Rock
+subgenres.rock <- genreChart$subgenre[genreChart$genre=='Rock']
+cmbn <- combn(subgenres.rock,2)
+
+cooccur <- apply(cmbn, 2, function(c) sum(genres.mat[,c[1]]==1 & genres.mat[,c[2]]==1))
+adj.mat <- matrix(0,length(subgenres.rock),length(subgenres.rock))
+adj.mat[lower.tri(adj.mat)] <- cooccur
+adj.mat <- t(adj.mat)
+adj.mat[lower.tri(adj.mat)] <- cooccur
+
+colnames(adj.mat) <- rownames(adj.mat) <- subgenres.rock
+gr  <- graph.adjacency(adj.mat,'undirected',T,diag = F)
+ebc <- suppressWarnings(edge.betweenness.community(gr))
+savepar <- par(mfrow=c(1,2))
+
+rock1 <- communities(ebc)[[1]] 
+rock2 <- communities(ebc)[[2]]
+
+plot.igraph(graph.adjacency(
+  adj.mat[communities(ebc)[[1]],communities(ebc)[[1]]],
+  'undirected',weighted = T,diag = F),main='Network of Rock Subgenres')
+plot.igraph(graph.adjacency(
+  adj.mat[communities(ebc)[[2]],communities(ebc)[[2]]],
+  'undirected',weighted = T,diag = F))
+par(savepar)
+
+
+## Hip-Hop
+subgenres.hiphop <- genreChart$subgenre[genreChart$genre=='Hip-Hop']
+cmbn <- combn(subgenres.hiphop,2)
+
+cooccur <- apply(cmbn, 2, function(c)
+  sum(genres.mat[,c[1]]==1 & genres.mat[,c[2]]==1))
+adj.mat <- matrix(0,length(subgenres.hiphop),length(subgenres.hiphop))
+adj.mat[lower.tri(adj.mat)] <- cooccur
+adj.mat <- t(adj.mat)
+adj.mat[lower.tri(adj.mat)] <- cooccur
+
+colnames(adj.mat) <- rownames(adj.mat) <- subgenres.hiphop
+gr  <- graph.adjacency(adj.mat,'undirected',T,diag = F)
+ebc <- suppressWarnings(edge.betweenness.community(gr))
+
+plot(gr,main="Network of Hip-Hop Subgenres")
+
+
+subgenres <- c(head(subset(
+  avg.favourites,Genre=='Rock'))$Subgenre,head(subset(avg.favourites,Genre=='Hip-Hop'))$Subgenre)
+
+cmbn <- combn(subgenres,2)
+
+cooccur <- apply(cmbn, 2, function(c) sum(genres.mat[,c[1]]==1 & genres.mat[,c[2]]==1))
+adj.mat <- matrix(0,length(subgenres),length(subgenres))
+adj.mat[lower.tri(adj.mat)] <- cooccur
+adj.mat <- t(adj.mat)
+adj.mat[lower.tri(adj.mat)] <- cooccur
+
+colnames(adj.mat) <- rownames(adj.mat) <- subgenres
+gr <- graph.adjacency(adj.mat,'undirected',T,diag = F)
+plot(gr,main='Most Favourited Subgenres')
+```
+
+Network of rock subgenres contains two disconnected networks of genres with one being more dense compared to other. Hip-hop network, on the other hand, is one connected graph whose degrees are either 2 or 3, in other words subgenres always co-occur but with just one or two other. Directing our focus into popular ones using `avg.favourated`, which we used to draw treemaps, can reduce the complex view. After the adjustment, for rock subgenres we have three groups that are not connected via non-popular genres
+
+```{r}
+tags <- strsplit(gsub("\\[|\\]","",tags),", ")
+
+tags.per.sg <- lapply(head(
+  subset(avg.favourites,Genre=='Rock'))$Subgenre, function(sg)
+  head(sort(table(unlist(
+    tags[genres.mat[,sg]==1 & apply(genres.mat,1,sum)<4])),decreasing = T),13)[-1])
+
+
+names(tags.per.sg) <- head(subset(avg.favourites,Genre=='Rock'))$Subgenre
+tags.per.sg
+
+tags.per.sg <- lapply(head(subset(avg.favourites,Genre=='Hip-Hop'))$Subgenre, function(sg)
+  head(sort(table(unlist(
+    tags[genres.mat[,sg]==1 & apply(genres.mat,1,sum)<4])),decreasing = T),12))
+
+names(tags.per.sg) <- head(subset(avg.favourites,Genre=='Hip-Hop'))$Subgenre
+
+tags.per.sg
+
+```
+
+An analysis using 6 most favourited subgenres gives us some intuition about kinds of genres dataset includes. After examining we can identify the following: 
+
+1. 404 - indie: indie rock in general
+2. 26  - postrock: yet another indie genre
+3. 98  - noiserock : rock with heavy/noisy sounds
+4. 36  - electronic rock: rock blended with techno sounds
+5. 101 - black metal: black metal but new age
+6. 314 - deathrock: yet another indie rock genre with dark themes
+
+However for hiphop, the tags are either sparse or the author don't know much _insider knowledge_ about these genres. Therefore we conclude this analysis here. We will proceed to degree of overlapping of 12 most common subgenres in our dataset below.
+
+## Number of Songs in the Dataset (Rock vs Hip hop)
+```{r message=F, warning=F}
+library('venneuler')
+gtable  <- data.frame(df.mdat$title, genres.mat[
+  track_id %in% intersect(track_id,df.feat$track_id),
+  as.character(genreChart[genreChart$genre=='Rock',1])[1:12]])
+gtables <- lapply(colnames(gtable)[-1], function(sg)
+  data.frame(gtable[gtable[,sg]!=0,1], rep(sg,sum(gtable[,sg]!=0))))
+gtables <- lapply(gtables, function(gt)
+  {temp <- gt; colnames(temp) <- c('title','genre'); temp})
+gtable  <- do.call(rbind,gtables)
+plot(venneuler(gtable), main='Co-occurance of Popular Rock Subgenres')
+
+gtable  <- data.frame(df.mdat$title, 
+                      genres.mat[track_id %in% intersect(track_id,df.feat$track_id),
+                      as.character(genreChart[genreChart$genre=='Hip-Hop',1])])
+gtables <- lapply(colnames(gtable)[-1],
+                  function(sg) data.frame(gtable[gtable[,sg]!=0,1], rep(sg,sum(gtable[,sg]!=0))))
+gtables <- lapply(gtables,
+                  function(gt) {temp <- gt; colnames(temp) <- c('title','genre'); temp})
+gtable  <- do.call(rbind,gtables)
+plot(venneuler(gtable), main='Co-occurance of Popular Hip-Hop Subgenres')
+
+```
+
+Even though it is not listened widely, 12 is most common sub genre among data that is followed by 25. We can notice that 111 and 109 are subclasses of 12 and 25 respectively. On the other hand there is not much varience in hip-hop songs in terms of their genres. Also seen in above diagrams 21 is the dominant one which can be identified simply as hip hop based on tags.
+
+Based on information provided by above diagrams and networks, we will divide Rock into two and proceed to data analysis.
+```{r}
+genreChart$genre.split <- as.character(genreChart$genre)
+genreChart$genre.split[genreChart$subgenre %in% rock2] <- rep('Rocknc',length(rock2))
+
+genresChart$genre.split <- as.character(genresChart$genre)
+genresChart$genre.split[sapply(strsplit(
+  genresChart$subgenre, ','), function(sg) sg[1]) %in% rock2] <- 'Rocknc'
+
+```
+
+# Data Analysis
+In previous section we described the datasets and developed insights about their characterstics. In this section we will answer our research questions outlined in introduction. We will first examine Spotify customers' musical tastes and their changes in time (if there is any) then examine songs' features to create distinguishing measures.
+
+## Bitrate vs. Interest, Favourite, Comment
+An interesting relation would be between bitrate of songs and people's preference for them. We plot ranks to check whether there is a strong enough correlation between variables. However below rank plots doesn't support existence of such relation. There are common record qualities (e.g. 256000 or 320000 kbps) that are seen as accumulations in certain ranges on x axis but the values (i.e. favourited, listens etc.) are independently covering full range of y axis indicating there is no correlation between these variables.
+
+```{r}
+savepar <- par(mfrow=c(2,2))
+plot(rank(rank(mdat$bit_rate)),
+     rank(interest),pch=19, col=adjustcolor('grey50',.5), main='bitrate vs. interest', xlab='',ylab='')
+plot(rank(rank(mdat$bit_rate)),
+     rank(favorites),pch=19, col=adjustcolor('grey50',.5), main='bitrate vs. favourited', xlab='',ylab='')
+plot(rank(rank(mdat$bit_rate)),
+     rank(listens),pch=19, col=adjustcolor('grey50',.5), main='bitrate vs. listens', xlab='',ylab='')
+plot(rank(rank(mdat$bit_rate)),
+     rank(duration.t),pch=19, col=adjustcolor('grey50',.5), main='bitrate vs. duration', xlab='',ylab='')
+par(savepar)
+```
+
+We further check whether there is a pattern of technology used by time via following heatmaps (or corrplots).
+```{r message=F, warning=F}
+library('corrplot')
+
+# bit.tbl <- with(subset(mdat, genre_top == 'Rock'),
+                # t(table(substr(as.Date(date_created),1,4),round(bit_rate,-4))))
+bit.tbl <- t(table(substr(as.Date(date_created),1,4),round(bit_rate,-4)))
+bit.tbl <- as.matrix(bit.tbl)[,-ncol(bit.tbl)]
+bit.tbl <- log(bit.tbl)
+bit.tbl[bit.tbl == -Inf] <- 0
+bit.tbl <- bit.tbl/max(bit.tbl)
+corrplot(t(bit.tbl), 'color',title = 'Bitrate vs. Time',  cl.pos = "n")
+```
+```{r message=F, warning=F, echo=F}
+library('corrplot')
+
+bit.tbl <- with(subset(mdat, genre_top == 'Rock'),
+                t(table(substr(as.Date(date_created),1,4),round(bit_rate,-4))))
+bit.tbl <- as.matrix(bit.tbl)[,-ncol(bit.tbl)]
+bit.tbl <- log(bit.tbl)
+bit.tbl[bit.tbl == -Inf] <- 0
+bit.tbl <- bit.tbl/max(bit.tbl)
+corrplot(t(bit.tbl), 'color',title = 'Bitrate vs. Time (Rock)',  cl.pos = "n")
+
+bit.tbl <- with(subset(mdat, genre_top == 'Hip-Hop'),
+                t(table(substr(as.Date(date_created),1,4),round(bit_rate,-4))))
+bit.tbl <- as.matrix(bit.tbl)[,-ncol(bit.tbl)]
+bit.tbl <- log(bit.tbl)
+bit.tbl[bit.tbl == -Inf] <- 0
+bit.tbl <- bit.tbl/max(bit.tbl)
+corrplot(t(bit.tbl), 'color',title = 'Bitrate vs. Time (Hip-Hop)',  cl.pos = "n")
+```
+
+It can be seen that songs with low quality extincts in the dataset whereas 130000 remains the lowest benchmark (when marginals are excluded). The quality of songs are, on the other hand, increasing by time as the most prominent bit rate in the dataset, 260000 kpbs, is replaced by 320000 but this may also be due to increasing varience in quality around 260000. Another phenomenon observed is the momentary increase of songs published in 190000 kpbs in 2014 which is more salient in Rock subset. This may be due to Spotify's operations to save data storing costs. Note that this difference in hue is not perceptual but an optical difference, which was verified by checking underrlying data. We can also observe that hip-hop songs are recorded with higher quality in general indicating there are more underground rock songs in the dataset than hiphop.
+
+## Popularity of Genres
+Coverage of rock songs in the dataset is `r round(sum(genre_top=='Rock')/nrow(mdat),2)`. Below graphs corresponds to this benchmark indicating there is no apparent difference in interest, favourite and counts of songs published in the period. The only exception is comment count ratio that oscilates close to 1 meaning either that people are more likely to comment on rock songs or that rock audience likes sharing their thoughts on Spotify.
+
+```{r, message=F, warning=F}
+library('ggplot2')
+library('gridExtra')
+ym_created   <- substr(date_created,0,7)
+genres.dat   <- data.frame(ym_created,
+                           genre_top,favorites,interest,comments,listens)
+genres.agg   <- lapply(unique(ym_created),
+                       function(ym) data.frame(t(sapply(c("Rock", "Hip-Hop"), function(g)
+  c(ym,g,apply(genres.dat[
+    genres.dat[,1]==ym&genres.dat[,2]==g,-(1:2)],2,sum), sum(genres.dat[,1]==ym&genres.dat[,2]==g) )))))
+genres.agg   <- do.call(rbind, genres.agg)
+colnames(genres.agg)   <- 
+  c("yearmonth","genre","f.count","i.count","c.count","l.count","count")
+
+
+
+genres.agg$i.count <- as.numeric(as.character(genres.agg$i.count))
+genres.agg$f.count <- as.numeric(as.character(genres.agg$f.count))
+genres.agg$c.count <- as.numeric(as.character(genres.agg$c.count))
+genres.agg$l.count <- as.numeric(as.character(genres.agg$l.count))
+genres.agg$count   <- as.numeric(as.character(genres.agg$count))
+genres.agg$yearmonth <- as.Date(paste0(genres.agg$yearmonth,"-01"))
+genres.agg$cumcount  <- NA
+genres.agg[genres.agg[,2]=="Rock","cumcount"]    <-
+  cumsum(genres.agg[genres.agg[,2]=="Rock","count"])
+genres.agg[genres.agg[,2]=="Hip-Hop","cumcount"] <-
+  cumsum(genres.agg[genres.agg[,2]=="Hip-Hop","count"])
+
+
+genres.pop <- genres.agg[genres.agg$genre=='Rock',-(1:2)] /
+  (genres.agg[genres.agg$genre=='Hip-Hop',-(1:2)] + genres.agg[genres.agg$genre=='Rock',-(1:2)])
+genres.pop$ym_created <- as.Date(paste0(unique(ym_created),"-01"))
+genres.pop.nmlt <- genres.pop
+genres.pop <- reshape2::melt(genres.pop,id='ym_created')
+genres.pop <- genres.pop[!is.na(genres.pop$value),]
+```
+
+```{r}
+
+g1 <- ggplot(subset(genres.pop, variable %in%
+                      c('f.count','count')), aes(ym_created,value,color=variable))
+g1 <- g1 + geom_line(aes(ym_created,value)) + ggtitle('Favourite vs. Count percentage')
+g2 <- ggplot(subset(genres.pop, variable %in%
+                      c('l.count','count')), aes(ym_created,value,color=variable))
+g2 <- g2 + geom_line(aes(ym_created,value)) + ggtitle('Listen vs. Count percentage')
+g3 <- ggplot(subset(genres.pop, variable %in%
+                      c('l.count','count')), aes(ym_created,value,color=variable))
+g3 <- g3 + geom_line(aes(ym_created,value)) + ggtitle('Interest vs. Count percentage')
+g4 <- ggplot(subset(genres.pop, variable %in%
+                      c('i.count','l.count')), aes(ym_created,value,color=variable))
+g4 <- g4 + geom_line(aes(ym_created,value)) + ggtitle('Listen vs. Interest percentage')
+g5 <- ggplot(subset(genres.pop, variable %in%
+                      c('c.count')), aes(ym_created,value,color=variable))
+g5 <- g5 + geom_point(aes(ym_created,value)) + ggtitle('Comment percentage')
+
+grid.arrange(g1,g2)
+grid.arrange(g3,g4)
+
+```
+
+Above time series present percentages of Rock songs with respect to different variables. According to the plots new rock songs are generated 3 times more than hip-hop songs in general so that it oscilates around dataset coverage, 80%. There is a drop in all plots around 2010 when popularity of hip-hop suddenly peaked for a short period. Although it corresponds to times when rap gained huge success, this sudden decrease doesn't seem natural and can be attributed to a systemic error.  
+
+One salient similarly among plots is between interest and listen counts which are scalable to each other almost perfectly. This is intuitive as people usually listen to the songs after searching for them. Moreover, listen, interest and favourite percentages are usually above 50% in favour of rock genre (see first three plots above), however one can also notice that the lines pass 50% level more often in late periods. This is parallel with hip-hop's acknowledged popularity in 2010s when rappers such as Drake and Kendrick Lamar gained huge successes. However rock also gained some success with popularity of indie-rock thus the ratios are still above 50% level. 
+
+We plotted the period after the peak of 2010 to observe this phenomenon. The lines of rock are generally upper until 2013 after when hip-hop started to penetrate.
+
+```{r}
+g1 <- ggplot(genres.agg[genres.agg$yearmonth > "2010-06-01",],
+             aes(yearmonth,count, group=genre,colour=genre))
+g1 <- g1 + geom_line() + theme_bw() + xlab('') + ylab('') + ggtitle('Count')
+
+
+g2 <- ggplot(genres.agg[genres.agg$yearmonth > "2010-06-01",],
+             aes(yearmonth,i.count, group=genre,colour=genre))
+g2 <- g2 + geom_line() + theme_bw() + xlab('') + ylab('') + ggtitle('Interest')
+
+
+g3 <- ggplot(genres.agg[genres.agg$yearmonth > "2010-06-01",],
+             aes(yearmonth,f.count, group=genre,colour=genre))
+g3 <- g3 + geom_line() + theme_bw() + xlab('') + ylab('') + ggtitle('Favourites')
+
+
+g4 <- ggplot(genres.agg[genres.agg$yearmonth > "2010-06-01",],
+             aes(yearmonth,l.count, group=genre,colour=genre))
+g4 <- g4 + geom_line() + theme_bw() + xlab('') + ylab('') + ggtitle('Listens')
+
+
+grid.arrange(g1,g2, ncol=1)
+grid.arrange(g3,g4, ncol=1)
+
+
+```
+
+Although above variables in plots don't show seasonal patterns or trend, percentages may have some patterns. Below we present decomposed components of percentage series using `stl`, but don't show decomposed values for sum of counts to save space.
+```{r warning=F, message=F}
+library('lubridate')
+temp <- genres.pop.nmlt
+mindate <- min(temp$ym_created)
+maxdate <- max(temp$ym_created)
+
+temp <- ts(temp[,1], start=c(lubridate::year(mindate),lubridate::month(mindate)),
+           end=c(lubridate::year(maxdate),lubridate::month(maxdate)), frequency=12)
+plot(stl(temp, s.window=7,s.degree=1, t.degree=1),
+     main=c('Favourites','Interest','Comment','Listen','Count of new published songs')[1])
+
+temp <- genres.pop.nmlt
+temp <- ts(temp[,2], start=c(lubridate::year(mindate),lubridate::month(mindate)),
+           end=c(lubridate::year(maxdate),lubridate::month(maxdate)), frequency=12)
+plot(stl(temp, s.window=7,s.degree=1, t.degree=1),
+     main=c('Favourites','Interest','Comment','Listen','Count of new published songs')[2])
+
+temp <- genres.pop.nmlt
+temp <- ts(temp[,4], start=c(lubridate::year(mindate),lubridate::month(mindate)),
+           end=c(lubridate::year(maxdate),lubridate::month(maxdate)), frequency=12)
+plot(stl(temp, s.window=7,s.degree=1, t.degree=1),
+     main=c('Favourites','Interest','Comment','Listen','Count of new published songs')[4])
+
+temp <- genres.pop.nmlt
+temp <- ts(temp[,5], start=c(lubridate::year(mindate),lubridate::month(mindate)),
+           end=c(lubridate::year(maxdate),lubridate::month(maxdate)), frequency=12)
+plot(stl(temp, s.window=7,s.degree=1, t.degree=1),
+     main=c('Favourites','Interest','Comment','Listen','Count of new published songs')[5])
+
+
+```
+
+There are interesting patterns revealed by decomposition. As expected the trend pattern is not significant compared to residual range but seasonal components seem to have significant variances. We can see some patterns shifting each three years. Notice that each seasonal components show this variance and they resemble one another, including counts of songs published. This indicate that platform has some periods to publish new songs. Also notice that variances in favourites, interest and listen are also scalable to new songs published. This may be expected for favourite and interest but such similarity between _count of new publisings_ and _listen_ may indicate either (i) there is bias in the dataset or (ii) audience is now consuming songs in a shorter period as opposed to listening them for longer periods.
+
+Based on above visuals we can answer our first research question. Here in general there is an increased popularity of hip-hop and this increase occurs after 2010 with some artists fame. We can also see that hit-songs are more common in hip-hop (see the eikosogram in previous section). However both are not enough to conclude that hip-hop's popularity altered rock's. In fact rock also has gained popularity recently, even though this popularity doesn't mean that people now listen to Pink Floyd more. However we should also add that there are some patterns in new songs published etc. indicating that there are systemic or systematic effects which limits our analysis. As we don't know much about data, i.e. how it is created, whether or not it is downsampled for some machine learning purpose etc, we cannot conclude this section with a certain answer.
+
+
+
+## Clustering by Features
+In this subsection we will be plotting different genres and subgenres to answer second research question, whether or not inclusive measures are distinguishing enough to cluster songs by their genres. To this end we start by downsampling songs with respect to their subgenres and plot stars as below. We are not going to plot each subgenre but 2 rock and 2 hip-hop subgenres based on their popularity to give hint about whether they are distinguishable or not.
+
+```{r}
+set.seed(123)
+ind <- which(gsub("\\[|\\]","",df.mdat$genres) == genresChart$subgenre[1])
+stars(df.feat[sample(ind,45),-c(1,9)],nrow=5, ncol=9,
+      main = paste0("Genre ",genresChart$subgenre[1], " (Rock)"),draw.segments=TRUE, cex=.5)
+
+```
+```{r}
+set.seed(123)
+ind <- which(gsub("\\[|\\]","",df.mdat$genres) == genresChart$subgenre[2])
+stars(df.feat[sample(ind,45),-c(1,9)][,1:8],nrow=5, ncol=9,
+      main = paste0("Genre ",genresChart$subgenre[2], " (Hip-Hop)"),draw.segments=TRUE, cex=.5)
+
+```
+
+```{r}
+set.seed(123)
+ind <- which(gsub("\\[|\\]","",df.mdat$genres) == genresChart$subgenre[3])
+stars(df.feat[sample(ind,45),-c(1,9)],nrow=5, ncol=9,
+      main = paste0("Genre ",genresChart$subgenre[3], " (Rock)"),draw.segments=TRUE, cex=.5)
+
+```
+
+```{r}
+set.seed(123)
+ind <- which(gsub("\\[|\\]","",df.mdat$genres) == genresChart$subgenre[13])
+stars(df.feat[sample(ind,15),-c(1,9)],nrow=3, ncol=5,
+      main = paste0("Genre ",genresChart$subgenre[13], " (Hip-Hop)"),draw.segments=TRUE, cex=.5)
+```
+
+<!-- # 1: red, black -->
+<!-- # 2:  -->
+<!-- # 3: green -->
+<!-- # 4: blue -->
+<!-- # 5: lightblue -->
+<!-- # 6: Purple -->
+<!-- # 7: Yellow -->
+<!-- # 8: Grey -->
+<!-- ## Purple (6) are strictly larger, and lightblue (5) are generally large -->
+
+The four set of displays above show some commonalities among genres but it is hard to associate one set of feature to a given subgenre. For rock subgenre 12, acousticness (black) is large almost all instances and energy (green) and tempo (yellow) are usually large whereas liveness measures (lightblue) are small. Similarly for other rock subgenre 25 black and blue leaves corresponding to acousticness and instrumentalness (blue) are larger than other leaves of stars. 
+
+For hip-hop subgenre 21, speechness (purple) is strictly greater than others and instrumentalness (blue) is also salient for many songs. In the last plot, on the other hand, speechness (purple) and liveness (lightblue) are distinguishably larger than other features but for this subgenre there is not much instances, it can be the case that the songs are not from more than two albums.
+
+These plots, with previous distributions, show that rock and hip-hop can be distinguishable based on some features (e.g. speechness) but they are not enough to specify subgenres. Moreover features such as instrumentalness could be misleading when associated to one genre. This phenomenon is also seen in parallel coordinate plots below; upper edge of sixth axis (speechness) is distinguishably blue (hip-hop) whereas on fourth axis (instrumentalness) both genres are overlapping. Therefore one would need further transformations, such as building some axes, to be able to distinguish genres with a precision. We will do so in the next subsection of our analysis.
+
+```{r}
+cols <- rep('firebrick',nrow(df.temp)); cols[df.mdat$genre_top=='Hip-Hop'] <- 'steelblue'
+cols <- adjustcolor(cols,.1)
+parcoord(df.feat[,-c(1,9)], col=cols, main="Rock vs. Hip-Hop")
+```
+
+### Feature Extraction
+As the features are not precise enough for classification we will use linear and non-linear dimension reduction methods to form new features. We begin with PCA and Kernel PCA. Below code applies both methods after defining colours of each song based on `genre.split` variable we generated using distinct co-occurance networks of subgenres.
+
+```{r warning=F, message=F}
+library(dimRed)
+library('loon')
+library('scagnostics')
+
+genreChart$cols <- 'firebrick'
+genreChart$cols[genreChart$genre.split=='Rocknc'] <- 'orange'
+genreChart$cols[genreChart$genre.split=='Hip-Hop'] <- 'steelblue'
+
+cols <- genreChart$cols[match(sapply(strsplit(
+  gsub("\\[|\\]","",df.mdat$genres),','), function(g) g[1]),genreChart$subgenre)]
+
+df.temp <- df.feat[-c(1,9)]
+svd_data <- svd(df.temp)
+u <- svd_data$u
+d.pca <- svd_data$d
+v <- svd_data$v
+
+
+
+reduced <- as.matrix(df.temp) %*% v
+# scags2d <- scagnostics2d(reduced)
+# nav    <- l_ng_plots(measures=scags2d, linkingGroup="feat",color=cols)
+
+df.temp <- as.matrix(df.feat[,-c(1,9)])
+feat.kpca <- kpca(df.temp, kernel="rbfdot", kpar=list(sigma=0.01))
+
+reduced.kpca   <- feat.kpca@pcv[,1:15]
+# kpca_scags2d <- scagnostics2d(reduced.kpca)
+# kpca_nav     <- l_ng_plots(measures=kpca_scags2d, linkingGroup="feat", glyph = "ocircle",col=cols)
+
+par(mfrow=c(1,2))
+plot(d.pca/max(d.pca),type="b", xlab="principal component",
+     ylab="singular value (relative)", col="grey50", pch=16)
+d <- feat.kpca@eig
+d <- round(d,10)
+plot(d/max(d),type="b", main="Scree plot", xlab="kernel principal components",
+     ylab="eigen value (relative)", ylim=c(0,1),col= "grey50",pch=19, cex=1)
+par(savepar)
+
+```
+
+Screeplot on the left shows PCA can extract one axis on which datapoints spread more compared to others however an investigation with loon shows the axes generated are not separating the data well enough. We also applied KPCA however it yields even less separating axes when first 15 axes are used. We present some plots below:
+
+```{r}
+colnames(reduced) <- paste0('PC',1:ncol(reduced))
+savepar <- par(mfrow=c(2,2))
+plot(PC2~PC1, data= reduced, col=cols)
+plot(PC3~PC1, data= reduced, col=cols)
+plot(PC4~PC2, data= reduced, col=cols)
+plot(PC5~PC2, data= reduced, col=cols)
+par(savepar)
+
+colnames(reduced.kpca) <- paste0('KPC',1:ncol(reduced.kpca))
+savepar <- par(mfrow=c(2,2))
+plot(KPC2~KPC1, data= reduced.kpca, col=cols)
+plot(KPC3~KPC1, data= reduced.kpca, col=cols)
+plot(KPC4~KPC2, data= reduced.kpca, col=cols)
+plot(KPC5~KPC2, data= reduced.kpca, col=cols)
+par(savepar)
+
+```
+Here one main reasons for obtaining such plots is feeding the PCA algorithm with all variables. More clearly we have already seen that some features (e.g. liveness) are not useful for separating rock from hip-hop (but may be good for picking e.g. rock songs among jazz songs). 
+
+By including features having the most characteristic distributions, i.e. danceability, instrumentalness and speechness, (see quantile plots of features) we re-apply the above analysis. As seen below this selection changes quality of plots substantially and yield better separable data.
+
+```{r}
+
+df.temp <- df.feat[-c(1,9)][,c(2,4,6)]
+svd_data <- svd(df.temp)
+u <- svd_data$u
+d.pca <- svd_data$d
+v <- svd_data$v
+
+reduced <- as.matrix(df.temp) %*% v
+# scags2d <- scagnostics2d(reduced)
+# nav    <- l_ng_plots(measures=scags2d, linkingGroup="feat",color=cols)
+
+# df.temp <- as.matrix(df.feat[,-c(1,9)])
+feat.kpca <- kpca(as.matrix(df.temp), kernel="rbfdot", kpar=list(sigma=0.01))
+
+reduced.kpca      <- feat.kpca@pcv
+
+# kpca_scags2d <- scagnostics2d(reduced.kpca)
+# kpca_nav     <- l_ng_plots(measures=kpca_scags2d, linkingGroup="feat", glyph = "ocircle",col=cols)
+
+savepar <- par(mfrow=c(1,2))
+plot(d.pca/max(d.pca),type="b", xlab="principal component",
+     ylab="singular value (relative)", col="grey50", pch=16)
+
+d <- feat.kpca@eig
+d <- round(d,10)
+plot(d/max(d),type="b", main="Scree plot", xlab="kernel principal components",
+     ylab="eigen value (relative)", ylim=c(0,1),
+     col= "grey50",pch=19, cex=1)
+par(savepar)
+
+```
+```{r}
+colnames(reduced) <- paste0('PC',1:ncol(reduced))
+savepar <- par(mfrow=c(1,2))
+plot(PC3~PC1, data= reduced, col=cols)
+plot(PC3~PC2, data= reduced, col=cols)
+par(savepar)
+
+savepar <- par(mfrow=c(2,2))
+colnames(reduced.kpca) <- paste0('KPC',1:ncol(reduced.kpca))
+plot(KPC1~KPC5, data= reduced.kpca, col=cols)
+plot(KPC2~KPC5, data= reduced.kpca, col=cols)
+plot(KPC3~KPC5, data= reduced.kpca, col=cols)
+plot(KPC4~KPC5, data= reduced.kpca, col=cols)
+par(savepar)
+```
+
+Here axes constructed based on three variables result in more separable plots. PCA can be used with kmeans or linear classifiers to identify the genre of a song. KPCA also return useful axes that can help to reduce complexity of the problem. 
+
+After attaining a degree of precision we continue to apply other dimension reduction methods to same three features as below:
+
+```{r warning=F, message=F}
+df.temp <- df.feat[-c(1,9)][,c(2,4,6)]
+k_nbhrs <- 5
+n_dims  <- 20
+lle20 <- embed(as.matrix(df.temp), "LLE", knn = k_nbhrs, ndim = n_dims)
+lle20data <- lle20@data@data
+# nav <- l_navgraph(lle20data[,1:5], linkingGroup="feat", color = cols, glyph='ocircle')
+# lle_scags2d <- scagnostics2d(lle20data)
+# lle_nav <- l_ng_plots(measures=lle_scags2d, linkingGroup="feat", color=cols)
+
+
+dst <- dist(df.temp)
+temp <- matrix(0,nrow(df.temp),nrow(df.temp))
+temp[lower.tri(temp)] <- dst
+temp <- t(temp)
+temp[lower.tri(temp)] <- dst
+dst <- temp
+k_nbhrs <- 5
+n_dims <- 5
+
+# Dimension reduction via isomap
+iso20 <- embed(dst^2, "Isomap", knn = k_nbhrs, ndim = n_dims)
+iso5data.p1 <- iso20@data@data
+
+colnames(iso5data.p1) <- gsub(" ", "", colnames(iso5data.p1), fixed = TRUE)
+
+
+
+# iso_scags2d <- scagnostics2d(cbind(iso5data.p1[,1:5]))
+# iso_nav <- l_ng_plots(measures=iso_scags2d, linkingGroup="frey", glyph = "ocircle",color=cols)
+
+# gstars <- l_glyph_add_serialaxes(iso_nav['plot']$plot,axesLayout = "radial",data=data.frame(df.temp),
+                                 # sequence=colnames(df.temp)[c(2,4,6)[eseq(3)]],
+                                 # scaling = 'variable',showAxes = FALSE,showArea = FALSE)
+```
+
+```{r}
+savepar <- par(mfrow=c(1,2))
+colnames(lle20data) <- paste0('LLE',1:ncol(lle20data))
+plot(LLE3~LLE5, data= lle20data, col=cols)
+plot(LLE4~LLE5, data= lle20data, col=cols)
+par(savepar)
+
+colnames(iso5data.p1) <- paste0('ISO',1:ncol(iso5data.p1))
+savepar <- par(mfrow=c(2,2))
+plot(ISO3~ISO1, data= iso5data.p1, col=cols)
+plot(ISO1~ISO5, data= iso5data.p1, col=cols)
+plot(ISO3~ISO4, data= iso5data.p1, col=cols)
+plot(ISO1~ISO4, data= iso5data.p1, col=cols)
+par(savepar)
+
+```
+
+After restricting features into three based on their distributions PCA, KPCA, LLE and dimension reduction with local neighbourhoods (ISO) yielded some _deep_ features useful to separate data. We found ISO the most useful in distinguishing variables as it yields more homogenous groupings but KPCA5 also gives valuable insights for classification.
+
+By using ISO axes one can not only classify genres, but also distinguish subgenres. By focusing on intersections in parallel coordinate plots it is also possible to detect precise set of points having same subgenres. Below we clustered data into subgenres to see if line intersections in parallel coordinate plot and point groupings in scatter plots can capture these songs with same set of subgenres. Note that we used three colours using genreChart as before to ease the level of difficulty when detecting intersections. 
+
+```{r eval=F}
+library(loon)
+pl <- l_serialaxes(iso5data.p1[,eseq(5)],
+                   linkingGroup = "feat",showAxesLabels = T,axesLayout = "parallel",color=cols)
+iso5data.p1_rev     <- iso5data.p1
+iso_scags2d <- scagnostics2d(cbind(iso5data.p1))
+nores <- l_ng_plots(measures=iso_scags2d,
+                    linkingGroup="feat", glyph = "ocircle",color=cols)
+iso5data.p1_rev[,4] <- -iso5data.p1_rev[,4]
+iso5data.p1_rev[,3] <- -iso5data.p1_rev[,3]
+l_serialaxes(iso5data.p1_rev[,eseq(5)],
+             linkingGroup = "feat",showAxesLabels = T,axesLayout = "parallel",color=cols)
+
+```
+
+
+```{r}
+genres.splitted <- gsub("\\[|\\]","",df.mdat$genres)
+# groups <- pl['color']
+# groups <- as.character(as.factor(groups))
+# groups <- lapply(unique(groups), function(g) which(g==groups))
+
+# save(groups, file = 'groups_v2.rda')
+load('groups_v2.rda')
+
+grps <- sapply(groups, function(g) {
+  temp <- table(genres.splitted[g])
+  t(as.matrix(head(sort(temp,decreasing = T))))
+  })[-c(4,7,8)]
+lapply(grps, function(g) {
+  temp <- g; colnames(temp) <- gsub(", ","-",colnames(temp)); temp})
+
+```
+
+With the ISO axes generated by using three features we constructed interactive parallel coordinates and scatter plots to check whether these features are strong enough to classify subgenres. In this application we focused our attention to data clusters in scatter plots and line intersections in parallel coordinates to detect only six groups of observations having same characteristics between all axes. Indeed this method yields observations mostly having same subgenre, or sharing some prominent subgenres. The tables above show distributions of subgenres per our classifications. We should note that these groupings are not perfect however below parallel coordinate plots of these groupings indicate that there is some room for improvment. For example in first two displays on left, more intersection points can be seen that could further split groupings and reduce errors as much as possible. 
+
+In any case these axes are strong enough to foster local differences among datapoints and can help to separate data precisely into genres and subgenres when one focuses his attention to be more careful in detecting intersections. One also improve quality using LLE axes for scatter plots which return spreadings along different dimensions for easier detection of groupings. We can therefore reject the hypothesis we proposed in the introduction that subgenres are not precise enough and do not signify substantial differences between songs. As we have shown, three features are enough to efficiently detect subgenres that are defined by public. Moreover we didn't detect all available intersections, one can train an algorithm to detect these knots and identify deeper characteristics without naming them. When current trend in industry is considered these deep features can be rewarding in developing recommendation systems.
+
+```{r}
+savepar <- par(mfrow=c(2,2))
+nores <- lapply(groups[-c(4,7,8)],
+                function(g) parcoord(iso5data.p1[g,eseq(5)],col=adjustcolor(cols[g],.3)))
+par(savepar)
+
+```
+
+We can now answer our second research question about characteristics of rock. We have shown danceability, instrumentalness and speechiness are enough to identify these genres and even can potentially distinguish subgenres whereas other features were not useful for improving quality. Therefore we can conclude that these features can be important paradigms to define what rock is. Further conclusion is, of course, not possible using this data since it is restricted into two genres and one might even argue whether or not the songs in this dataset are rock at all.
+
+
+# Conclusion
+
+In this study we examined data provided by a widely used online music streaming platform, Spotify, to answer whether popularity of two subgenres are changing over time and is there a measure to distinguish one genre from another. The datasets are involving meta-information about songs such as how many times listened, duration of songs etc. and features data involving scores from 0 to 1 measuring 8 characteristics of each songs. 
+
+In general we have detected some commonalities within and among genres. We started explaining characteristics of variables such as bit_rate, # times listened, subgenres etc. and have shown some subgenres are more common or more popular than others. The subgenres, however, were all overlapping and hard to identify precisely. We used tag information of each song to associate a genre to numeric placeholders but as the tags were sparse we didn't come up with exact genres. Still we could extract some information from co-occurance of subgenres and shown that rock songs are richer in terms of its genres. 
+
+Our pre-analysis have shown there are more hit songs in hip-hop genre than in rock. We further conducted a time series analysis to answer our first research question about popularity of genres. We have shown hip-hop gained popularity after the beginning of 2010s but in our dataset its popularity remained below rock's for it also re-gained its prominence in form of indie and progressive rock. Our time series analysis have also shown that there are platform dependent commonalities, i.e. there are cycles of similar patterns in different variables. These similarities may indicate that listen count of a song is moving together with song publishing rate which can be interpreted as people are not listening songs anymore but consuming them. Yet these commonalities may also be attributed to data sampling since data is shared as part of a project aiming to develop a classifier.
+
+Analysis of second dataset (features) have shown that with respect to two genres some features are more useful than others. We have shown the most distinguishing features are danceability, instrumentalness and speechiness whereas tempo and liveness were almost insensible to the genres. We further used dimension reduction techniques to develop better axes but our attempts using all features failed, but when we picked these three features the axes could return separable classes.
+
+Using navigation and parallel coordinates of loon package we later used both scatter plots and parallel axes to check whether these separated points were reflecting meta-information, i.e. genre and subgenres. By using separated groupings in scatter plots and finetuning with line intersections in parallel axes plots we could identify the subgenres more precisely.
+
+Our findings can be useful to develop classifiers performing better than the ones using raw data. An algorithm that can detect knots in parallel axes plots can both precisely detect (sub)genres but also define deep features that can be useful for developing music recommendation systems.
+
+To some degree we could answer our research questions and determine truth of our hypotheses. The popularity of rock is not reducing by time however prominence of hip-hop seems to increase as there are more hit-songs and its popularity is rising compared to the new songs published. On the other hand, our data is not supporting pessimistic claims about mortality of rock, which seems to a question in concern of Europeans who visit North America. Such a claim needs further investigation with a more detailed data involving user locations.
+
+Our second question was also a pessimistic one, is rock identifiable or not. Axes that our analysis yielded could grasp some characteristics of rock. Based on three features, certain combinations of these values could locate rock and hiphop songs, even their subgenres. Therefore we can say there are still certain characteristics but of course a European walking on streets of Waterloo can argue that "this is not rock".
+
+```{r eval=F, echo=F}
+# Execute if you want to see something funny
+df.temp   <- as.matrix(df.feat[,-c(1,9)])
+feat.kpca <- kpca(df.temp, kernel="rbfdot", kpar=list(sigma=0.01))
+
+reduced.kpca           <- feat.kpca@pcv[,1:15]
+colnames(reduced.kpca) <- paste0('KPC', 1:15)
+plot(-KPC2~KPC1, data= reduced.kpca, col=cols, main='Thank you')
+
+```

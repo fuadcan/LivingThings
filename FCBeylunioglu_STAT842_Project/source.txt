@@ -1,0 +1,5 @@
+https://github.com/fivethirtyeight/data/tree/master/classic-rock
+https://github.com/AumitLeon/million-songs
+https://github.com/kayveen/Classify-Song-Genres-from-Audio-Data
+https://github.com/Oysiyl/DataCamp_Solutions_Python/tree/master/Classify%20Song%20Genres%20from%20Audio%20Dat
+https://fivethirtyeight.com/features/why-classic-rock-isnt-what-it-used-to-be/a
